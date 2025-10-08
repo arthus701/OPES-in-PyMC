@@ -71,7 +71,7 @@ axs[0, 0].set_title("Sampled")
 for it, _x in enumerate(x_samps):
     hist, xedges, yedges = np.histogram2d(
         *_x.T,
-        bins=20,
+        bins=100,
         range=[[-3, 3], [-3, 3]],
         density=True,
     )
@@ -90,11 +90,31 @@ for it, _x in enumerate(x_samps):
     )
 
 axs[0, 1].set_title("Re-Sampled")
+# for it, _x in enumerate(x_resampled):
+#     axs[it+1, 1].scatter(
+#         _x[:, 0],
+#         _x[:, 1],
+#         alpha=0.5,
+#     )
 for it, _x in enumerate(x_resampled):
-    axs[it+1, 1].scatter(
-        _x[:, 0],
-        _x[:, 1],
-        alpha=0.5,
+    hist, xedges, yedges = np.histogram2d(
+        *_x.T,
+        bins=100,
+        range=[[-3, 3], [-3, 3]],
+        density=True,
+    )
+
+    xpos = (xedges[:-1] + xedges[1:]) / 2
+    ypos = (yedges[:-1] + yedges[1:]) / 2
+    X, Y = np.meshgrid(xpos, ypos, indexing='ij')
+
+    # norm = colors.Normalize(vmin=hist.min(), vmax=hist.max())
+    pcm = axs[it+1, 1].pcolormesh(
+        X,
+        Y,
+        -np.log(hist + 1e-12),
+        cmap='viridis_r',
+        norm=norm,
     )
 
 fig.tight_layout()
