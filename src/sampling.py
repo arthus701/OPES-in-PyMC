@@ -9,11 +9,11 @@ from model import myModel
 # Monkey-patch the original inference loop with our own
 pmj._blackjax_inference_loop = inference_loop
 
-n_chains = 1
+n_chains = 4
 
 with myModel:
     idata = pmj.sample_blackjax_nuts(
-        10_000,
+        100_000,
         # 1_000_000,      # Hanna's value
         tune=0,
         chains=n_chains,
