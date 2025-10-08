@@ -22,6 +22,7 @@ def energy_function(x):
 
 
 with pm.Model() as myModel:
+    # Just use a flat prior
     x = pm.Flat(
         'x',
         size=2,
@@ -29,5 +30,7 @@ with pm.Model() as myModel:
 
     distribution = pm.Potential(
         'distribution',
+        # negative energy, as PyMC is designed to work with probability
+        # distributions
         -energy_function(x),
     )

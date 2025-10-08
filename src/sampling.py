@@ -6,11 +6,13 @@ from inference_loop import inference_loop
 
 from model import myModel
 
+# import arviz as az
+
+# Monkey-patch the original inference loop with our own
 pmj._blackjax_inference_loop = inference_loop
 
 rng = np.random.default_rng(130118)
 
-# import arviz as az
 n_chains = 1
 
 with myModel:

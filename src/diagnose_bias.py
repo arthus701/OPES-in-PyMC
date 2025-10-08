@@ -28,9 +28,7 @@ sax = fig.add_axes([sliderloc[0], sliderloc[1]-0.1, colax_width, 0.02])
 iteration_sel = Slider(
     sax,
     'Iteration',
-    # max(knots.min(), knots_old.min()),
     0,
-    # delta_F.shape[1]-1,
     999,
     valinit=0,
     valstep=1,

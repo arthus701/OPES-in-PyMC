@@ -31,6 +31,8 @@ weights = weights / np.sum(weights, axis=-1)[:, None]
 
 x_resampled = np.zeros((*weights.shape, x_samps.shape[-1]))
 
+# XXX Reweighting is turned off, as during experimentation the weights
+# sometimes contained nans, breaking the script
 # for it, weights_i in enumerate(weights):
 #     indices = rng.choice(
 #         np.arange(cutout, weights.shape[1] + cutout),
@@ -72,19 +74,17 @@ for it, _x in enumerate(x_samps):
         density=True,
     )
 
-    # Grid centers
     xpos = (xedges[:-1] + xedges[1:]) / 2
     ypos = (yedges[:-1] + yedges[1:]) / 2
     X, Y = np.meshgrid(xpos, ypos, indexing='ij')
 
-    # Plot as a 2D color map
     # norm = colors.Normalize(vmin=hist.min(), vmax=hist.max())
     pcm = axs[it+1, 0].pcolormesh(
         X,
         Y,
         -np.log(hist + 1e-12),
         cmap='viridis_r',
-        # norm=norm,
+        norm=norm,
     )
 
 axs[0, 1].set_title("Re-Sampled")
@@ -100,7 +100,7 @@ fig.tight_layout()
 plt.show()
 
 fig_2, ax_2 = plt.subplots(1, 1, figsize=(10, 5))
-
+ax_2.set_title("Bias over iterations")
 ax_2.plot(
     bias_values.T,
 )
@@ -109,5 +109,7 @@ ax_2.plot(
 #     idata.sample_stats['lp'].values.flatten(),
 # )
 # ax_2.set_yscale('log')
+ax_2.set_xlabel('Iteration number')
+ax_2.set_ylabel('Bias value')
 
 plt.show()
