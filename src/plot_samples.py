@@ -6,6 +6,8 @@ import arviz as az
 
 from model import energy_function
 
+rng = np.random.default_rng(130118)
+
 x, dx = np.linspace(-3, 3, 1000, retstep=True)
 y, dy = np.linspace(-3, 3, 1000, retstep=True)
 
@@ -33,14 +35,14 @@ x_resampled = np.zeros((*weights.shape, x_samps.shape[-1]))
 
 # XXX Reweighting is turned off, as during experimentation the weights
 # sometimes contained nans, breaking the script
-# for it, weights_i in enumerate(weights):
-#     indices = rng.choice(
-#         np.arange(cutout, weights.shape[1] + cutout),
-#         size=weights.shape[1],
-#         replace=True,
-#         p=weights_i,
-#     ).astype(int)
-#     x_resampled[it] = np.copy(x_samps[it, indices, :])
+for it, weights_i in enumerate(weights):
+    indices = rng.choice(
+        np.arange(cutout, weights.shape[1] + cutout),
+        size=weights.shape[1],
+        replace=True,
+        p=weights_i,
+    ).astype(int)
+    x_resampled[it] = np.copy(x_samps[it, indices, :])
 
 fig, axs = plt.subplots(
     1 + n_chains, 2,

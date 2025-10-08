@@ -10,10 +10,10 @@ from blackjax.mcmc.hmc import HMCState
 # Use this for toying with other integrators
 # from blackjax.mcmc.integrators import yoshida
 
-NUM_LAMBDA = 11
-SIGMA = 0.5
+NUM_LAMBDA = 121
+SIGMA = 0.05
 INTEGRATION_STEPS = 10
-STEPSIZE = 0.1
+STEPSIZE = 0.01
 HMC_STEPS = 10
 
 
@@ -66,7 +66,7 @@ def update_delta_F(
     delta_F = jnp.clip(
         delta_F,
         min=None,
-        max=15,
+        max=5,
     )
 
     return delta_F_nominator_sum, delta_F_denominator_sum, delta_F
