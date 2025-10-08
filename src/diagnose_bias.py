@@ -11,7 +11,7 @@ idata = az.from_netcdf('./samples.nc')
 delta_F = idata.sample_stats['delta_F'].values
 x_samps = idata.posterior['x'].values
 NUM_LAMBDA = delta_F.shape[2]
-SIGMA = 0.5
+SIGMA = 0.05
 
 chain = 0
 
@@ -19,11 +19,12 @@ fig, ax = plt.subplots(
     1, 1,
     figsize=(13, 6),
 )
+fig.subplots_adjust(bottom=0.2)
 
 bnds = ax.get_position().bounds
-colax_width = bnds[2]
+slider_width = bnds[2]
 sliderloc = ax.get_position().bounds
-sax = fig.add_axes([sliderloc[0], sliderloc[1]-0.1, colax_width, 0.02])
+sax = fig.add_axes([sliderloc[0], sliderloc[1]-0.15, slider_width, 0.05])
 
 iteration_sel = Slider(
     sax,
@@ -58,9 +59,16 @@ line, = ax.plot(
     get_bias_function(0)
     # + energy_function(x_array, x_samps[chain, 0, 1]),
 )
-line_2, = ax.plot(
+
+ax.set_xlabel('$x$ coordinate')
+ax.set_ylabel('Bias function (blue)')
+
+twinx = ax.twinx()
+twinx.set_ylabel('Biased energy function\n(logp - bias potential; orange)')
+line_2, = twinx.plot(
     x_array,
     get_bias_function(0) - energy_function((x_array, x_samps[chain, 0, 1])),
+    color='C1',
 )
 x_at = ax.axvline(
     x_samps[chain, 0, 0],
@@ -79,6 +87,9 @@ def update(val):
 
     )
     x_at.set_xdata([x_samps[chain, iteration_sel.val, 0]])
+
+    print(x_samps[chain, iteration_sel.val])
+
     fig.canvas.draw_idle()
 
 
