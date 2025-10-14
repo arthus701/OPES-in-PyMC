@@ -30,7 +30,7 @@ iteration_sel = Slider(
     sax,
     'Iteration',
     0,
-    999,
+    99999,
     valinit=0,
     valstep=1,
     valfmt='%i',
@@ -51,7 +51,7 @@ def get_bias_function(it):
         + delta_F_value[None, :]
     )
 
-    return np.log(np.mean(V, axis=-1))
+    return -np.log(np.mean(V, axis=-1))
 
 
 line, = ax.plot(
@@ -67,7 +67,7 @@ twinx = ax.twinx()
 twinx.set_ylabel('Biased energy function\n(logp - bias potential; orange)')
 line_2, = twinx.plot(
     x_array,
-    get_bias_function(0) - energy_function((x_array, x_samps[chain, 0, 1])),
+    get_bias_function(0) + energy_function((x_array, x_samps[chain, 0, 1])),
     color='C1',
 )
 x_at = ax.axvline(
@@ -83,7 +83,7 @@ def update(val):
     )
     line_2.set_ydata(
         get_bias_function(int(iteration_sel.val))
-        - energy_function((x_array, x_samps[chain, iteration_sel.val, 1]))
+        + energy_function((x_array, x_samps[chain, iteration_sel.val, 1]))
 
     )
     x_at.set_xdata([x_samps[chain, iteration_sel.val, 0]])
