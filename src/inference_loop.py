@@ -165,7 +165,7 @@ def inference_loop(
         biased_kernel = algorithm(
             logp_biased,
             step_size=STEPSIZE,
-            inverse_mass_matrix=100*jnp.ones(2),
+            inverse_mass_matrix=jnp.ones(2),
             num_integration_steps=INTEGRATION_STEPS,
             # Uncomment for toying with integrators
             # integrator=yoshida,
