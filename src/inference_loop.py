@@ -15,6 +15,7 @@ SIGMA = 0.05
 INTEGRATION_STEPS = 10
 STEPSIZE = 0.01
 HMC_STEPS = 10
+BIAS_CAP = 15
 
 
 class BiasState(NamedTuple):
@@ -53,7 +54,7 @@ def update_delta_F(
     potential,
 ):
     delta_F_nominator_sum += jnp.exp(
-        (-(x - gaussian_centers) ** 2 / (2 * SIGMA ** 2))
+        -(x - gaussian_centers) ** 2 / (2 * SIGMA ** 2)
         + potential * jnp.ones(NUM_LAMBDA)
     )
 
@@ -66,7 +67,7 @@ def update_delta_F(
     delta_F = jnp.clip(
         delta_F,
         min=None,
-        max=15,
+        max=BIAS_CAP,
     )
 
     return delta_F_nominator_sum, delta_F_denominator_sum, delta_F
@@ -111,7 +112,7 @@ def inference_loop(
     delta_F = jnp.clip(
         delta_F,
         min=None,
-        max=15,
+        max=BIAS_CAP,
     )
     # Calculate initial bias value for storing
     V = jnp.exp(
@@ -164,7 +165,7 @@ def inference_loop(
         biased_kernel = algorithm(
             logp_biased,
             step_size=STEPSIZE,
-            inverse_mass_matrix=jnp.ones(2),
+            inverse_mass_matrix=100*jnp.ones(2),
             num_integration_steps=INTEGRATION_STEPS,
             # Uncomment for toying with integrators
             # integrator=yoshida,
