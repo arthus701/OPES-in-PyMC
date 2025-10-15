@@ -96,13 +96,12 @@ def inference_loop(
         logdensity,
         logdensity_grad,
     )
-    last_state = init_state
 
     # Set up gaussians
     gaussian_centers = -3 + 6 * jnp.arange(NUM_LAMBDA) / (NUM_LAMBDA - 1)
     # Calculate initial bias amplitudes
     delta_F_nominator_sum = jnp.exp(
-        -(last_state.position[0][0] - gaussian_centers) ** 2
+        -(init_position[0][0] - gaussian_centers) ** 2
         / (2 * SIGMA ** 2)
     )
     # Test starting with no bias
@@ -117,14 +116,13 @@ def inference_loop(
     )
     # Calculate initial bias value for storing
     V = jnp.exp(
-        -(last_state.position[0][0] - gaussian_centers) ** 2 / (2 * SIGMA ** 2)
+        -(init_position[0][0] - gaussian_centers) ** 2 / (2 * SIGMA ** 2)
         + delta_F
     )
-
     bias_value = -jnp.log(jnp.mean(V))
     # Set up initial BiasState
     init_bias_state = BiasState(
-        last_state,
+        init_state,
         gaussian_centers,
         delta_F_nominator_sum,
         delta_F_denominator_sum,
@@ -157,6 +155,13 @@ def inference_loop(
             # distribution vs. potential energy)
             return logp_fn(pos) - bias_function(pos[0][0])
 
+        grad_fn = jax.value_and_grad(logp_biased)
+        logdensity, logdensity_grad = grad_fn(state.position)
+        state = HMCState(
+            position=state.position,
+            logdensity=logdensity,
+            logdensity_grad=logdensity_grad
+        )
         biased_kernel = algorithm(
             logp_biased,
             step_size=STEPSIZE,
@@ -168,7 +173,8 @@ def inference_loop(
 
         for _ in range(HMC_STEPS):
             # XXX update rng_key?
-            state, info = biased_kernel(rng_key, state)
+            rng_key, subkey = jax.random.split(rng_key)
+            state, info = biased_kernel(subkey, state)
 
         # Prepare info and outputs
         position = state.position
