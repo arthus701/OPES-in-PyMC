@@ -10,62 +10,114 @@ from blackjax.mcmc.hmc import HMCState
 # Use this for toying with other integrators
 # from blackjax.mcmc.integrators import yoshida
 
-NUM_LAMBDA = 201
-MAX_TEMP = 1000
+NUM_TEMPS = 101
+MAX_TEMP = 100
 ZERO_TEMP = 1
+BETA_0 = 1 / ZERO_TEMP
+BETA_MIN = 1 / MAX_TEMP
 # TEMPS = jnp.linspace(1, MAX_TEMP, NUM_LAMBDA)
 # LAMBDAS = 1 / TEMPS - 1
-LAMBDAS = jnp.linspace(1 / MAX_TEMP, 1 / ZERO_TEMP, NUM_LAMBDA)[::-1] \
-    - 1 / ZERO_TEMP
-TEMPS = 1 / (LAMBDAS + 1 / ZERO_TEMP)
+BETAS = jnp.linspace(BETA_MIN, BETA_0, NUM_TEMPS)[::-1]
+TEMPS = 1 / BETAS
 INTEGRATION_STEPS = 10
 STEPSIZE = 0.01
 HMC_STEPS = 10
-BIAS_CAP = None
+# https://github.com/hannakjellson/Opes-sampling-for-age-depth-modelling/blob/
+# cc5daa83c8bce45ffd5b440b9cea5fd49a1b4917/python/src/age_depth_models/
+# age_depth_model_OPES/define_data_and_variables.py#L144
+DE = 50
 
 
 class BiasState(NamedTuple):
     state: HMCState
     delta_F_nominator_sum: jax.Array
+    max_delta_F_nominator_sum: jax.Array
     delta_F_denominator_sum: jax.Array
+    max_delta_F_denominator_sum: jax.Array
     delta_F: jax.Array
     bias_value: float
     count: float
 
 
-def bias_potential(u, delta_F):
-    # NOTE: u = -logp
-    delta_u = LAMBDAS / ZERO_TEMP * u
-    V = jnp.exp(
-        -delta_u + delta_F
+def bias_potential(energy, delta_F):
+    temp_term = (BETAS - BETA_0) * energy
+    sum_for_V = jnp.sum(
+            jnp.exp(-temp_term + delta_F)
     )
-    return -jnp.log(jnp.sum(V) / NUM_LAMBDA)
+    return -jnp.log(sum_for_V / NUM_TEMPS)
 
 
 def update_delta_F(
-    u,
+    energy,
     delta_F_nominator_sum,
+    max_delta_F_nominator_sum,
     delta_F_denominator_sum,
+    max_delta_F_denominator_sum,
     delta_F,
     potential,
 ):
-    delta_F_nominator_sum += jnp.exp(
-        -LAMBDAS / ZERO_TEMP * u + potential * jnp.ones(NUM_LAMBDA)
+    temp_term = (BETAS - BETA_0) * energy
+
+    # we have to use the jnp.where construction, cause otherwise we get an
+    # error, because the condition is not know at compile time
+    new_max = -temp_term + potential
+    condition_nominator = new_max > max_delta_F_nominator_sum
+    max_diff = max_delta_F_nominator_sum - new_max
+    delta_F_nominator_sum = jnp.where(
+        condition_nominator,
+        delta_F_nominator_sum * jnp.exp(max_diff),
+        delta_F_nominator_sum,
+    )
+    max_delta_F_nominator_sum = jnp.where(
+        condition_nominator,
+        new_max * jnp.ones(NUM_TEMPS),
+        max_delta_F_nominator_sum,
     )
 
-    delta_F_denominator_sum += jnp.exp(potential)
+    delta_F_nominator_sum += jnp.exp(
+        -temp_term
+        + potential * jnp.ones(NUM_TEMPS)
+        - max_delta_F_nominator_sum
+    )
 
-    delta_F = -jnp.log(
-        delta_F_nominator_sum / delta_F_denominator_sum
+    condition_denominator = potential > max_delta_F_denominator_sum
+    delta_F_denominator_sum = jnp.where(
+        condition_denominator,
+        delta_F_denominator_sum * jnp.exp(
+            max_delta_F_denominator_sum - potential
+        ),
+        delta_F_denominator_sum,
+    )
+    max_delta_F_denominator_sum = jnp.where(
+        condition_denominator,
+        potential,
+        max_delta_F_denominator_sum,
+    )
+
+    delta_F_denominator_sum += jnp.exp(
+        potential
+        - max_delta_F_denominator_sum
+    )
+
+    delta_F = (
+        - jnp.log(delta_F_nominator_sum / delta_F_denominator_sum)
+        + max_delta_F_denominator_sum
+        - max_delta_F_nominator_sum
     )
 
     delta_F = jnp.clip(
         delta_F,
         min=None,
-        max=BIAS_CAP,
+        max=DE,
     )
 
-    return delta_F_nominator_sum, delta_F_denominator_sum, delta_F
+    return (
+        delta_F_nominator_sum,
+        max_delta_F_nominator_sum,
+        delta_F_denominator_sum,
+        max_delta_F_denominator_sum,
+        delta_F,
+    )
 
 
 # This is the replacement inference_loop
@@ -93,25 +145,31 @@ def inference_loop(
     )
 
     # Calculate initial free energy
-    delta_F_nominator_sum = jnp.exp(LAMBDAS / ZERO_TEMP * logdensity)
-    delta_F_denominator_sum = 1
-    delta_F = -jnp.log(delta_F_nominator_sum / delta_F_denominator_sum)
-
-    delta_F = jnp.clip(
+    (
+        delta_F_nominator_sum,
+        max_delta_F_nominator_sum,
+        delta_F_denominator_sum,
+        max_delta_F_denominator_sum,
         delta_F,
-        min=None,
-        max=BIAS_CAP,
+    ) = update_delta_F(
+        energy=-logdensity,
+        delta_F_nominator_sum=jnp.zeros(NUM_TEMPS),
+        max_delta_F_nominator_sum=-jnp.inf * jnp.ones(NUM_TEMPS),
+        delta_F_denominator_sum=0,
+        max_delta_F_denominator_sum=0,
+        delta_F=0,
+        potential=0,
     )
     # Calculate initial bias value for storing
-    V = jnp.exp(
-        LAMBDAS / ZERO_TEMP * logdensity + delta_F
-    )
-    bias_value = -jnp.log(jnp.sum(V) / NUM_LAMBDA)
+    bias_value = bias_potential(energy=-logdensity, delta_F=delta_F)
+
     # Set up initial BiasState
     init_bias_state = BiasState(
         init_state,
         delta_F_nominator_sum,
+        max_delta_F_nominator_sum,
         delta_F_denominator_sum,
+        max_delta_F_denominator_sum,
         delta_F,
         bias_value,
         0.0,
@@ -124,7 +182,9 @@ def inference_loop(
         # unpack, done for convenience only
         state = bias_state.state
         delta_F_nominator_sum = bias_state.delta_F_nominator_sum
+        max_delta_F_nominator_sum = bias_state.delta_F_nominator_sum
         delta_F_denominator_sum = bias_state.delta_F_denominator_sum
+        max_delta_F_denominator_sum = bias_state.delta_F_denominator_sum
         delta_F = bias_state.delta_F
         # partial function evaluation, so that bias arguments are always the
         # same
@@ -179,19 +239,28 @@ def inference_loop(
         }
 
         # Update bias
-        new_delta_F_nominator_sum, new_delta_F_denominator_sum, new_delta_F = \
-            update_delta_F(
-                -logdensity,
-                delta_F_nominator_sum,
-                delta_F_denominator_sum,
-                delta_F,
-                potential,
+        (
+            new_delta_F_nominator_sum,
+            new_max_delta_F_nominator_sum,
+            new_delta_F_denominator_sum,
+            new_max_delta_F_denominator_sum,
+            new_delta_F,
+         ) = update_delta_F(
+                energy=-logdensity,
+                delta_F_nominator_sum=delta_F_nominator_sum,
+                max_delta_F_nominator_sum=max_delta_F_nominator_sum,
+                delta_F_denominator_sum=delta_F_denominator_sum,
+                max_delta_F_denominator_sum=max_delta_F_denominator_sum,
+                delta_F=delta_F,
+                potential=potential,
             )
 
         new_bias_state = BiasState(
             state,
             new_delta_F_nominator_sum,
+            new_max_delta_F_nominator_sum,
             new_delta_F_denominator_sum,
+            new_max_delta_F_denominator_sum,
             new_delta_F,
             potential,
             bias_state.count + 1,

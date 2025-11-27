@@ -2,7 +2,7 @@
 import numpy as np
 import arviz as az
 
-from inference_loop import LAMBDAS, ZERO_TEMP
+from inference_loop import BETAS, BETA_0
 
 rng = np.random.default_rng(130118)
 
@@ -14,7 +14,7 @@ warmup = int(round(x_samps.shape[1] * 0.1))
 v_k = iData.sample_stats['bias_value'].values
 logp = iData.sample_stats['lp'].values
 lambda_idx = 0
-delta_u = -LAMBDAS[None, None, :] / ZERO_TEMP * logp[:, :, None]
+delta_u = -(BETAS[None, None, :] - BETA_0) * logp[:, :, None]
 
 weights = np.exp(-delta_u[:, warmup:, ] + v_k[:, warmup:, None])
 weights = weights / np.sum(weights, axis=1)[:, None]

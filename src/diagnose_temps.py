@@ -3,11 +3,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from reweighting import weights
-from inference_loop import NUM_LAMBDA, TEMPS
+from inference_loop import NUM_TEMPS, TEMPS
 
 n_eff_lambda = np.sum(weights, axis=1)**2 / np.sum(weights**2, axis=1)
 n_eff_lambda /= weights.shape[1]
-target = 1 / NUM_LAMBDA
+target = 1 / NUM_TEMPS
 
 fig, ax = plt.subplots(
     1, 1,
