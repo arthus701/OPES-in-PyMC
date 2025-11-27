@@ -23,11 +23,20 @@ for it in range(4):
 ax.axhline(target, color='grey', label='Target', ls='--')
 
 
+ax.set_xscale('log')
 ax.set_xlabel('Temperature')
+ax.set_yscale('log')
 ax.set_ylabel(r'$n_\text{eff} / n$')
 
 ax.legend(frameon=False)
 
 fig.tight_layout()
+
+fig.savefig(
+    '../diagnosis_neff.png',
+    bbox_inches='tight',
+    pad_inches=0.05,
+    dpi=300,
+)
 
 plt.show()
