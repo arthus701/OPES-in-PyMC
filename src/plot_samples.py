@@ -94,4 +94,11 @@ for it, _x in enumerate(x_resampled):
 
 fig.tight_layout()
 
+fig.savefig(
+    '../samples_per_chain.png',
+    bbox_inches='tight',
+    pad_inches=0.05,
+    dpi=300,
+)
+
 plt.show()
