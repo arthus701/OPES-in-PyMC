@@ -2,11 +2,9 @@ from matplotlib import pyplot as plt
 from matplotlib import colors
 
 import numpy as np
-import arviz as az
 
 from model import energy_function
-
-rng = np.random.default_rng(130118)
+from reweighting import x_samps, x_resampled
 
 x, dx = np.linspace(-3, 3, 1000, retstep=True)
 y, dy = np.linspace(-3, 3, 1000, retstep=True)
@@ -19,30 +17,7 @@ P /= np.sum(P) * dx * dy
 
 norm = colors.Normalize(vmin=P.min(), vmax=P.max())
 
-idata = az.from_netcdf('./samples.nc')
-
-cutout = 100
-bias_values = idata.sample_stats['bias_value'].values
-delta_F = idata.sample_stats['delta_F'].values
-x_samps = idata.posterior['x'].values
-
 n_chains = x_samps.shape[0]
-
-weights = np.exp(bias_values[:, cutout:])
-weights = weights / np.sum(weights, axis=-1)[:, None]
-
-x_resampled = np.zeros((*weights.shape, x_samps.shape[-1]))
-
-# XXX Reweighting is turned off, as during experimentation the weights
-# sometimes contained nans, breaking the script
-for it, weights_i in enumerate(weights):
-    indices = rng.choice(
-        np.arange(cutout, weights.shape[1] + cutout),
-        size=weights.shape[1],
-        replace=True,
-        p=weights_i,
-    ).astype(int)
-    x_resampled[it] = np.copy(x_samps[it, indices, :])
 
 fig, axs = plt.subplots(
     1 + n_chains, 2,
@@ -118,20 +93,5 @@ for it, _x in enumerate(x_resampled):
     )
 
 fig.tight_layout()
-
-plt.show()
-
-fig_2, ax_2 = plt.subplots(1, 1, figsize=(10, 5))
-ax_2.set_title("Bias over iterations")
-ax_2.plot(
-    bias_values.T,
-)
-# ax_2.scatter(
-#     x_samps[:, :, 0].flatten(),
-#     idata.sample_stats['lp'].values.flatten(),
-# )
-# ax_2.set_yscale('log')
-ax_2.set_xlabel('Iteration number')
-ax_2.set_ylabel('Bias value')
 
 plt.show()

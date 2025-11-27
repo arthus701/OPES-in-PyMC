@@ -10,8 +10,14 @@ from blackjax.mcmc.hmc import HMCState
 # Use this for toying with other integrators
 # from blackjax.mcmc.integrators import yoshida
 
-NUM_LAMBDA = 121
-SIGMA = 0.05
+NUM_LAMBDA = 101
+MAX_TEMP = 200
+ZERO_TEMP = 1
+# TEMPS = jnp.linspace(1, MAX_TEMP, NUM_LAMBDA)
+# LAMBDAS = 1 / TEMPS - 1
+LAMBDAS = jnp.linspace(1 / MAX_TEMP, 1 / ZERO_TEMP, NUM_LAMBDA)[::-1] \
+    - 1 / ZERO_TEMP
+TEMPS = 1 / (LAMBDAS + 1 / ZERO_TEMP)
 INTEGRATION_STEPS = 10
 STEPSIZE = 0.01
 HMC_STEPS = 10
@@ -20,7 +26,6 @@ BIAS_CAP = 15
 
 class BiasState(NamedTuple):
     state: HMCState
-    gaussian_centers: jax.Array
     delta_F_nominator_sum: jax.Array
     delta_F_denominator_sum: jax.Array
     delta_F: jax.Array
@@ -28,37 +33,27 @@ class BiasState(NamedTuple):
     count: float
 
 
-def bias_potential(x, gaussian_centers, delta_F):
-    # Reference implementation with for-loop
-    # sum_for_V = 0
-    # for it in range(NUM_LAMBDA):
-    #     sum_for_V += jnp.exp(
-    #         -(x - gaussian_centers[it]) ** 2 / (2 * SIGMA ** 2)
-    #         + delta_F[it]
-    #     )
-
-    # return -jnp.log(sum_for_V / NUM_LAMBDA)
+def bias_potential(u, delta_F):
+    # NOTE: u = -logp
+    delta_u = LAMBDAS / ZERO_TEMP * u
     V = jnp.exp(
-        -(x - gaussian_centers) ** 2 / (2 * SIGMA ** 2)
-        + delta_F
+        -delta_u + delta_F
     )
     return -jnp.log(jnp.sum(V) / NUM_LAMBDA)
 
 
 def update_delta_F(
-    x,
-    gaussian_centers,
+    u,
     delta_F_nominator_sum,
     delta_F_denominator_sum,
     delta_F,
-    potential,
+    bias_potential,
 ):
     delta_F_nominator_sum += jnp.exp(
-        -(x - gaussian_centers) ** 2 / (2 * SIGMA ** 2)
-        + potential * jnp.ones(NUM_LAMBDA)
+        -LAMBDAS * ZERO_TEMP * u + bias_potential * jnp.ones(NUM_LAMBDA)
     )
 
-    delta_F_denominator_sum += jnp.exp(potential) * jnp.ones(NUM_LAMBDA)
+    delta_F_denominator_sum += jnp.exp(bias_potential)
 
     delta_F = -jnp.log(
         delta_F_nominator_sum / delta_F_denominator_sum
@@ -97,16 +92,9 @@ def inference_loop(
         logdensity_grad,
     )
 
-    # Set up gaussians
-    gaussian_centers = -3 + 6 * jnp.arange(NUM_LAMBDA) / (NUM_LAMBDA - 1)
-    # Calculate initial bias amplitudes
-    delta_F_nominator_sum = jnp.exp(
-        -(init_position[0][0] - gaussian_centers) ** 2
-        / (2 * SIGMA ** 2)
-    )
-    # Test starting with no bias
-    # delta_F_nominator_sum = 1e-12 * jnp.ones(NUM_LAMBDA)
-    delta_F_denominator_sum = jnp.ones(NUM_LAMBDA)
+    # Calculate initial free energy
+    delta_F_nominator_sum = jnp.exp(LAMBDAS * ZERO_TEMP * logdensity)
+    delta_F_denominator_sum = 1
     delta_F = -jnp.log(delta_F_nominator_sum / delta_F_denominator_sum)
 
     delta_F = jnp.clip(
@@ -116,14 +104,12 @@ def inference_loop(
     )
     # Calculate initial bias value for storing
     V = jnp.exp(
-        -(init_position[0][0] - gaussian_centers) ** 2 / (2 * SIGMA ** 2)
-        + delta_F
+        LAMBDAS * ZERO_TEMP * logdensity + delta_F
     )
-    bias_value = -jnp.log(jnp.mean(V))
+    bias_value = -jnp.log(jnp.sum(V) / NUM_LAMBDA)
     # Set up initial BiasState
     init_bias_state = BiasState(
         init_state,
-        gaussian_centers,
         delta_F_nominator_sum,
         delta_F_denominator_sum,
         delta_F,
@@ -137,7 +123,6 @@ def inference_loop(
         _, rng_key = xs
         # unpack, done for convenience only
         state = bias_state.state
-        gaussian_centers = bias_state.gaussian_centers
         delta_F_nominator_sum = bias_state.delta_F_nominator_sum
         delta_F_denominator_sum = bias_state.delta_F_denominator_sum
         delta_F = bias_state.delta_F
@@ -145,7 +130,6 @@ def inference_loop(
         # same
         bias_function = partial(
             bias_potential,
-            gaussian_centers=gaussian_centers,
             delta_F=delta_F
         )
 
@@ -153,7 +137,8 @@ def inference_loop(
             # bias is subtracked instead of added, due to the different sign
             # of logp_fn in comparison to molecular dynamics (probability
             # distribution vs. potential energy)
-            return logp_fn(pos) - bias_function(pos[0][0])
+            logp = logp_fn(pos)
+            return logp - bias_function(-logp)
 
         grad_fn = jax.value_and_grad(logp_biased)
         logdensity, logdensity_grad = grad_fn(state.position)
@@ -178,8 +163,8 @@ def inference_loop(
 
         # Prepare info and outputs
         position = state.position
-        potential = bias_potential(position[0][0], gaussian_centers, delta_F)
-
+        logdensity = state.logdensity
+        potential = bias_potential(-logdensity, delta_F)
         stats = {
             "diverging": info.is_divergent,
             "energy": info.energy,
@@ -194,8 +179,7 @@ def inference_loop(
         # Update bias
         new_delta_F_nominator_sum, new_delta_F_denominator_sum, new_delta_F = \
             update_delta_F(
-                position[0][0],
-                gaussian_centers,
+                -logdensity,
                 delta_F_nominator_sum,
                 delta_F_denominator_sum,
                 delta_F,
@@ -204,7 +188,6 @@ def inference_loop(
 
         new_bias_state = BiasState(
             state,
-            gaussian_centers,
             new_delta_F_nominator_sum,
             new_delta_F_denominator_sum,
             new_delta_F,
