@@ -10,8 +10,8 @@ from blackjax.mcmc.hmc import HMCState
 # Use this for toying with other integrators
 # from blackjax.mcmc.integrators import yoshida
 
-NUM_LAMBDA = 101
-MAX_TEMP = 200
+NUM_LAMBDA = 201
+MAX_TEMP = 1000
 ZERO_TEMP = 1
 # TEMPS = jnp.linspace(1, MAX_TEMP, NUM_LAMBDA)
 # LAMBDAS = 1 / TEMPS - 1
@@ -21,7 +21,7 @@ TEMPS = 1 / (LAMBDAS + 1 / ZERO_TEMP)
 INTEGRATION_STEPS = 10
 STEPSIZE = 0.01
 HMC_STEPS = 10
-BIAS_CAP = 15
+BIAS_CAP = None
 
 
 class BiasState(NamedTuple):
@@ -47,13 +47,13 @@ def update_delta_F(
     delta_F_nominator_sum,
     delta_F_denominator_sum,
     delta_F,
-    bias_potential,
+    potential,
 ):
     delta_F_nominator_sum += jnp.exp(
-        -LAMBDAS * ZERO_TEMP * u + bias_potential * jnp.ones(NUM_LAMBDA)
+        -LAMBDAS / ZERO_TEMP * u + potential * jnp.ones(NUM_LAMBDA)
     )
 
-    delta_F_denominator_sum += jnp.exp(bias_potential)
+    delta_F_denominator_sum += jnp.exp(potential)
 
     delta_F = -jnp.log(
         delta_F_nominator_sum / delta_F_denominator_sum
@@ -93,7 +93,7 @@ def inference_loop(
     )
 
     # Calculate initial free energy
-    delta_F_nominator_sum = jnp.exp(LAMBDAS * ZERO_TEMP * logdensity)
+    delta_F_nominator_sum = jnp.exp(LAMBDAS / ZERO_TEMP * logdensity)
     delta_F_denominator_sum = 1
     delta_F = -jnp.log(delta_F_nominator_sum / delta_F_denominator_sum)
 
@@ -104,7 +104,7 @@ def inference_loop(
     )
     # Calculate initial bias value for storing
     V = jnp.exp(
-        LAMBDAS * ZERO_TEMP * logdensity + delta_F
+        LAMBDAS / ZERO_TEMP * logdensity + delta_F
     )
     bias_value = -jnp.log(jnp.sum(V) / NUM_LAMBDA)
     # Set up initial BiasState
@@ -171,7 +171,9 @@ def inference_loop(
             # "tree_depth": info.num_trajectory_expansions,
             # "n_steps": info.num_integration_steps,
             "acceptance_rate": info.acceptance_rate,
-            "lp": state.logdensity,
+            # logdensity we get from state contains the bias, so we correct for
+            # it
+            "lp": logdensity + potential,
             "bias_value": potential,
             "delta_F": bias_state.delta_F,
         }
